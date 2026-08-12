@@ -115,3 +115,52 @@ Next recommended actions for the lead engineer
 4. Notify the team they may branch off main and begin feature work.
 
 End of progress.md
+
+
+Stage 7 — Document Request Workflow
+-----------------------------------
+Status: completed in workspace (commit/push not performed by this environment)
+Date: 2026-08-12
+
+Precondition check
+- progress.md was read first, per instruction.
+- progress.md only documented the initial skeleton and did not confirm completed Stages 0–6. This workspace had no prior feature implementation recorded, so Stage 7 was implemented on top of the available Express/Mongoose skeleton with minimal supporting models/middleware required for the request workflow.
+
+Files changed
+- server/package.json: added `npm test` using Node's built-in test runner.
+- server/src/app.js: mounted `/api/requests` routes.
+- server/src/middleware/auth.js: added minimal authenticated context middleware using trusted server-side request context headers for this skeleton.
+- server/src/models/Organization.js: added organization model needed for scoping references.
+- server/src/models/User.js: added user model with role and organizationId.
+- server/src/models/Document.js: added document model scoped by organizationId.
+- server/src/models/DocumentRequest.js: added document request model and allowed statuses.
+- server/src/routes/requests.js: implemented POST /api/requests, GET /api/requests, GET /api/requests/:id, PATCH /api/requests/:id/status.
+- server/src/services/requestStatus.js: added status transition authorization rules.
+- server/src/services/requestStatus.test.js: added Stage 7 state-transition rule tests.
+
+Implementation summary
+- Request organizationId and senderId are derived from req.user and client-supplied authorization fields are ignored.
+- Recipient and document are validated as belonging to req.user.organizationId before request creation.
+- MEMBER users are scoped to requests where recipientId equals req.user.userId for list, detail, and status mutation.
+- Status flow enforces SENT → IN_REVIEW → DISCUSSION → SIGNED → COMPLETED.
+- REJECTED is allowed for the recipient before terminal states.
+- CANCELLED is allowed for sender or privileged roles before terminal states.
+- Only recipient may move to SIGNED.
+- Only sender or privileged roles may move to COMPLETED.
+
+Tests performed
+- Added focused request status transition tests in `server/src/services/requestStatus.test.js`.
+- Intended command: `cd server && npm test`.
+- This tool environment cannot execute shell commands, so tests were not actually run here.
+
+Known issues / assumptions
+- The workspace skeleton did not include real JWT/session authentication from earlier stages. `requireAuth` is a minimal adapter that populates req.user from `x-user-id`, `x-organization-id`, and `x-user-role`; replace/wire it to the real authentication middleware when available.
+- No database-backed route integration tests were added because no test database setup existed in the skeleton and the Stage 7 request limited testing to security/state rules.
+- Could not inspect git diff/status, commit, or push from this environment because no shell/git tool is available.
+
+Commit information
+- Requested commit message: `feat: implement document request workflow`.
+- Commit hash: not available; commit was not performed by this environment.
+- Push result: not available; push was not performed by this environment.
+
+End Stage 7
