@@ -321,3 +321,122 @@ test('organization isolation cannot be bypassed by client-supplied organizationI
     organizationId: 'org-a',
   });
 });
+
+
+test('user routes list only authenticated organization users for owners and reviewers', async () => {
+  const { listUsers } = await import('../controllers/userController.js');
+  const orgId = new mongoose.Types.ObjectId();
+
+  const originalFind = User.find;
+  User.find = (filter) => {
+    assert.deepEqual(filter, { organizationId: orgId.toString() });
+    return {
+      sort(sortSpec) {
+        assert.deepEqual(sortSpec, { createdAt: -1 });
+        return Promise.resolve([
+          new User({ name: 'Owner', email: 'owner@example.com', password: 'hash', role: USER_ROLES.OWNER, organizationId: orgId }),
+        ]);
+      },
+    };
+  };
+
+  try {
+    for (const role of [USER_ROLES.OWNER, USER_ROLES.REVIEWER]) {
+      const req = { user: { userId: 'auth-user', role, organizationId: orgId.toString() } };
+      const res = createMockResponse();
+
+      await listUsers(req, res, assert.fail);
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.users.length, 1);
+      assert.equal(Object.hasOwn(res.body.users[0], 'password'), false);
+      assert.equal(Object.hasOwn(res.body.users[0], 'passwordHash'), false);
+    }
+  } finally {
+    User.find = originalFind;
+  }
+});
+
+test('user route role chain denies members with 403', () => {
+  const req = { user: { userId: 'member-id', role: USER_ROLES.MEMBER, organizationId: 'org-id' } };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  requireRole([USER_ROLES.OWNER, USER_ROLES.REVIEWER])(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 403);
+});
+
+test('user lookup returns same organization user and filters sensitive fields', async () => {
+  const { getUserById } = await import('../controllers/userController.js');
+  const orgId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const user = new User({ _id: userId, name: 'Reviewer', email: 'reviewer@example.com', password: 'hash', role: USER_ROLES.REVIEWER, organizationId: orgId });
+  const originalFindById = User.findById;
+  User.findById = async (id) => {
+    assert.equal(id, userId.toString());
+    return user;
+  };
+
+  try {
+    const req = { params: { id: userId.toString() }, user: { userId: 'owner-id', role: USER_ROLES.OWNER, organizationId: orgId.toString() } };
+    const res = createMockResponse();
+
+    await getUserById(req, res, assert.fail);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.user.id, userId.toString());
+    assert.equal(Object.hasOwn(res.body.user, 'password'), false);
+    assert.equal(Object.hasOwn(res.body.user, 'passwordHash'), false);
+    assert.equal(Object.hasOwn(res.body.user, 'jwtSecret'), false);
+  } finally {
+    User.findById = originalFindById;
+  }
+});
+
+test('user lookup forbids cross-organization access with 403', async () => {
+  const { getUserById } = await import('../controllers/userController.js');
+  const requestedUserId = new mongoose.Types.ObjectId();
+  const otherOrgId = new mongoose.Types.ObjectId();
+  const originalFindById = User.findById;
+  User.findById = async () => new User({ _id: requestedUserId, name: 'Other', email: 'other@example.com', password: 'hash', role: USER_ROLES.MEMBER, organizationId: otherOrgId });
+
+  try {
+    const req = { params: { id: requestedUserId.toString() }, user: { userId: 'owner-id', role: USER_ROLES.OWNER, organizationId: new mongoose.Types.ObjectId().toString() } };
+    const res = createMockResponse();
+
+    await getUserById(req, res, assert.fail);
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.success, false);
+  } finally {
+    User.findById = originalFindById;
+  }
+});
+
+test('user lookup rejects invalid IDs and reports nonexistent users', async () => {
+  const { getUserById } = await import('../controllers/userController.js');
+  const reqWithInvalidId = { params: { id: 'not-an-object-id' }, user: { organizationId: 'org-id' } };
+  const invalidRes = createMockResponse();
+
+  await getUserById(reqWithInvalidId, invalidRes, assert.fail);
+  assert.equal(invalidRes.statusCode, 400);
+
+  const validMissingId = new mongoose.Types.ObjectId().toString();
+  const originalFindById = User.findById;
+  User.findById = async () => null;
+
+  try {
+    const missingRes = createMockResponse();
+    await getUserById({ params: { id: validMissingId }, user: { organizationId: 'org-id' } }, missingRes, assert.fail);
+    assert.equal(missingRes.statusCode, 404);
+    assert.equal(missingRes.body.success, false);
+  } finally {
+    User.findById = originalFindById;
+  }
+});

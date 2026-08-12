@@ -394,3 +394,60 @@ git add progress.md server/src/middleware/organizationScope.js server/src/tests/
 git commit -m "feat: enforce organization resource isolation"
 git push origin main
 ```
+
+
+Stage 5 — Organization-Scoped User Retrieval Routes
+---------------------------------------------------
+Status: COMPLETE
+
+Completion summary
+------------------
+Stage 5 user retrieval routes have been implemented after confirming Stages 0–4 are marked complete in this progress file. The implementation is limited to secure organization-scoped user reads and does not add document routes or later-stage features.
+
+Files changed
+-------------
+- Added `server/src/controllers/userController.js`
+- Added `server/src/routes/users.js`
+- Updated `server/src/app.js` to mount `GET /api/users` routes under `/api/users`
+- Updated `server/src/tests/auth.test.js` with Stage 5 user route/controller tests
+- Updated `progress.md`
+
+Implementation summary
+----------------------
+- Added `GET /api/users` protected by `protect`, `requireRole([owner, reviewer])`, and `requireOrganizationIdentity`.
+- Added `GET /api/users/:id` with ObjectId validation, same-organization enforcement, cross-org `403`, nonexistent user `404`, and safe user serialization.
+- User listing scopes queries using the authenticated `req.user.organizationId` only; client-supplied organization IDs are not trusted.
+- Responses use the existing `{ success: ... }` format and `toSafeUser` filtering, so password/security fields are not returned.
+
+Tests performed
+---------------
+Relevant Stage 5 tests were added to `server/src/tests/auth.test.js` for owner list, reviewer list, member denial, same-org lookup, cross-org lookup, invalid ID, nonexistent user, and sensitive-field filtering.
+
+In this tool-only environment, shell/git commands cannot be executed by the assistant. Run locally:
+
+```bash
+cd server
+npm test
+```
+
+Known issues
+------------
+- None known for Stage 5.
+
+Commit / push status
+--------------------
+Requested commit message: `feat: add organization user routes`
+
+Commit hash: not available in this tool-only workspace because git commands cannot be executed here.
+Push result: not available in this tool-only workspace because git push cannot be executed here.
+
+Suggested Stage 5 commands
+--------------------------
+```bash
+git status
+git diff
+cd server && npm test && cd ..
+git add progress.md server/src/app.js server/src/controllers/userController.js server/src/routes/users.js server/src/tests/auth.test.js
+git commit -m "feat: add organization user routes"
+git push origin main
+```
