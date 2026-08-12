@@ -247,3 +247,77 @@ test('requireRole handles invalid role configuration safely', () => {
     assert.equal(res.statusCode, 200);
   }
 });
+
+
+test('organization isolation allows same-organization resources', async () => {
+  const { requireSameOrganization } = await import('../middleware/organizationScope.js');
+  const req = {
+    user: { userId: 'user-id', role: USER_ROLES.MEMBER, organizationId: 'org-a' },
+    body: { organizationId: 'org-b' },
+  };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  await requireSameOrganization(() => ({ id: 'resource-id', organizationId: 'org-a' }))(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, true);
+  assert.equal(req.organizationId, 'org-a');
+  assert.equal(req.resource.id, 'resource-id');
+  assert.equal(res.statusCode, 200);
+});
+
+test('organization isolation forbids different-organization resources with 403', async () => {
+  const { requireSameOrganization } = await import('../middleware/organizationScope.js');
+  const req = { user: { userId: 'user-id', role: USER_ROLES.MEMBER, organizationId: 'org-a' } };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  await requireSameOrganization(() => ({ id: 'resource-id', organizationId: 'org-b' }))(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.success, false);
+});
+
+test('organization isolation rejects missing authenticated organization identity safely', async () => {
+  const { requireSameOrganization } = await import('../middleware/organizationScope.js');
+  const req = { user: { userId: 'user-id', role: USER_ROLES.MEMBER } };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  await requireSameOrganization(() => ({ id: 'resource-id', organizationId: 'org-a' }))(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.success, false);
+});
+
+test('organization isolation cannot be bypassed by client-supplied organizationId', async () => {
+  const { requireSameOrganization, scopeToAuthenticatedOrganization } = await import('../middleware/organizationScope.js');
+  const req = {
+    user: { userId: 'user-id', role: USER_ROLES.MEMBER, organizationId: 'org-a' },
+    params: { organizationId: 'org-b' },
+    query: { organizationId: 'org-b' },
+    body: { organizationId: 'org-b' },
+    headers: { 'x-organization-id': 'org-b' },
+  };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  await requireSameOrganization(() => ({ id: 'resource-id', organizationId: req.body.organizationId }))(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(scopeToAuthenticatedOrganization(req, { status: 'active' }), {
+    status: 'active',
+    organizationId: 'org-a',
+  });
+});

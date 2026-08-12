@@ -343,3 +343,54 @@ git add .
 git commit -m "feat: add role based authorization middleware"
 git push origin main
 ```
+
+
+Stage 4 — Organization Scoping
+------------------------------
+Status: COMPLETE
+
+Completion summary
+------------------
+Stage 4 reusable organization/tenant isolation has been implemented after confirming Stages 0–3 are marked complete in this progress file. The implementation is intentionally limited to reusable scoping helpers/middleware and minimal tests; it does not add full user, document, request, message, notification, audit, AI, encryption, or signature features.
+
+Completed Stage 4 items
+-----------------------
+- Added reusable organization scoping utilities in `server/src/middleware/organizationScope.js`.
+- Organization identity is derived only from `req.user.organizationId`, which is attached by verified JWT authentication.
+- Added safe rejection when authenticated organization identity is missing (`401`).
+- Added reusable resource ownership enforcement for future resources:
+  - `resource.organizationId === req.user.organizationId`
+- Cross-organization resource access returns `403`.
+- Added helper for building future organization-scoped filters from authenticated identity instead of client-supplied organizationId.
+- Tests verify:
+  - same organization allowed
+  - different organization forbidden with `403`
+  - missing authenticated organization identity rejected safely
+  - body/query/params/header supplied organizationId cannot bypass authorization
+
+Tests performed
+---------------
+Relevant Stage 4 tests added to `server/src/tests/auth.test.js`. In this environment, shell/git commands are unavailable to the assistant, so run locally:
+
+```bash
+cd server
+npm test
+```
+
+Commit / push status
+--------------------
+Requested commit message: `feat: enforce organization resource isolation`
+
+Commit hash: not available in this tool-only workspace because git commands cannot be executed here.
+Push result: not available in this tool-only workspace because git push cannot be executed here.
+
+Suggested Stage 4 commands
+--------------------------
+```bash
+git status
+git diff
+cd server && npm test && cd ..
+git add progress.md server/src/middleware/organizationScope.js server/src/tests/auth.test.js
+git commit -m "feat: enforce organization resource isolation"
+git push origin main
+```
