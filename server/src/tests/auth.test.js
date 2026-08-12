@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { buildNewOrganizationOwnerInput } from '../controllers/authController.js';
-import { protect } from '../middleware/auth.js';
+import { protect, requireRole } from '../middleware/auth.js';
 import User, { USER_ROLE_VALUES, USER_ROLES } from '../models/User.js';
 import { generateToken, normalizeEmail, toSafeUser } from '../utils/auth.js';
 
@@ -177,4 +177,73 @@ test('registration ignores arbitrary role payloads and creates only a new organi
   assert.notEqual(allowedRegistrationFields.organizationId.toString(), requestedBody.organizationId);
   assert.equal(allowedRegistrationFields.organizationId, serverOrganizationId);
   assert.equal(allowedRegistrationFields.role, USER_ROLES.OWNER);
+});
+
+
+test('requireRole allows owner and reviewer roles from authenticated identity', () => {
+  for (const role of [USER_ROLES.OWNER, USER_ROLES.REVIEWER]) {
+    const req = {
+      user: { userId: 'user-id', role, organizationId: 'org-id' },
+      body: { role: USER_ROLES.MEMBER },
+    };
+    const res = createMockResponse();
+    let nextCalled = false;
+
+    requireRole([USER_ROLES.OWNER, USER_ROLES.REVIEWER])(req, res, () => {
+      nextCalled = true;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(res.statusCode, 200);
+  }
+});
+
+test('requireRole denies member role with 403 and ignores request body role', () => {
+  const req = {
+    user: { userId: 'user-id', role: USER_ROLES.MEMBER, organizationId: 'org-id' },
+    body: { role: USER_ROLES.OWNER },
+  };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  requireRole([USER_ROLES.OWNER, USER_ROLES.REVIEWER])(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.success, false);
+});
+
+test('requireRole denies unauthenticated requests with 401 when protect has not attached req.user', () => {
+  const req = { body: { role: USER_ROLES.OWNER } };
+  const res = createMockResponse();
+  let nextCalled = false;
+
+  requireRole([USER_ROLES.OWNER])(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.success, false);
+});
+
+test('requireRole handles invalid role configuration safely', () => {
+  for (const invalidConfig of [[], ['admin'], [USER_ROLES.OWNER, 'admin'], null]) {
+    const req = { user: { userId: 'user-id', role: USER_ROLES.OWNER, organizationId: 'org-id' } };
+    const res = createMockResponse();
+    let nextError;
+    let nextCalled = false;
+
+    requireRole(invalidConfig)(req, res, (error) => {
+      nextCalled = true;
+      nextError = error;
+    });
+
+    assert.equal(nextCalled, true);
+    assert.equal(nextError.statusCode, 500);
+    assert.match(nextError.message, /Invalid role authorization configuration/);
+    assert.equal(res.statusCode, 200);
+  }
 });

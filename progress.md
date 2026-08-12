@@ -300,3 +300,46 @@ git add .
 git commit -m "feat: define organization user roles"
 git push origin main
 ```
+
+
+Stage 3 — Role Authorization Middleware
+---------------------------------------
+Status: COMPLETE
+
+Completion summary
+------------------
+Stage 3 role authorization middleware has been implemented on top of the existing Stage 1 `protect` authentication middleware. The implementation is intentionally limited to reusable role checks and does not add organization scoping, document/request authorization, documents, requests, messages, notifications, AI, encryption, or signatures.
+
+Completed Stage 3 items
+-----------------------
+- Added reusable `requireRole(allowedRoles)` middleware in `server/src/middleware/auth.js`.
+- Middleware flow is intended as:
+  - `protect`
+  - `requireRole([...])`
+  - controller/route handler
+- `requireRole` requires `req.user` to be present from verified JWT authentication.
+- Authorization uses only `req.user.role` from the authenticated identity attached by `protect`.
+- Request body role values are ignored and are never trusted for authorization.
+- Allowed roles are checked against the explicit Stage 2 role enum values: `owner`, `reviewer`, and `member`.
+- Unauthorized authenticated roles receive `403`.
+- Requests without an authenticated user receive `401`.
+- Invalid middleware role configuration is handled safely by passing a `500` configuration error to the central error handler instead of silently allowing access.
+- Added tests covering:
+  - owner allowed
+  - reviewer allowed
+  - member denied
+  - unauthenticated denied
+  - invalid role configuration handled safely
+  - request body role spoofing ignored
+
+Stage boundary
+--------------
+Stage 3 is complete only. Organization-level access rules and document/request-specific authorization are intentionally not implemented yet.
+
+Suggested Stage 3 push commands
+-------------------------------
+```bash
+git add .
+git commit -m "feat: add role based authorization middleware"
+git push origin main
+```

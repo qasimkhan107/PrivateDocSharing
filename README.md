@@ -8,7 +8,7 @@ This commit is a one-time setup on main. Four feature branches should be created
 - feat/encryption
 - feat/frontend
 
-Stage 0 initial skeleton is present. Stage 1 adds the authentication foundation: registration, login, bcrypt password hashing, JWT creation/verification, and a temporary protected `/api/auth/me` endpoint. Stage 2 defines the organization role data model with explicit `owner`, `reviewer`, and `member` roles. Role authorization middleware, documents, requests, messaging, notifications, AI, encryption, and signatures are not implemented yet.
+Stage 0 initial skeleton is present. Stage 1 adds the authentication foundation: registration, login, bcrypt password hashing, JWT creation/verification, and a temporary protected `/api/auth/me` endpoint. Stage 2 defines the organization role data model with explicit `owner`, `reviewer`, and `member` roles. Stage 3 adds reusable role authorization middleware via `requireRole(...)` on top of `protect`. Documents, requests, messaging, notifications, AI, encryption, and signatures are not implemented yet.
 
 Repository layout
 
@@ -90,11 +90,19 @@ Auth responses return a JWT and safe user fields only; passwords are never retur
 - Run dev server
   npm run dev
 
+Role authorization middleware
+
+- `protect` verifies `Authorization: Bearer <token>` and attaches the JWT identity to `req.user`.
+- `requireRole(allowedRoles)` should run after `protect`, for example: `protect, requireRole(['owner', 'reviewer'])`.
+- Role checks use only the verified `req.user.role`; request body role values are ignored.
+- Unauthorized authenticated roles receive `403`; unauthenticated requests receive `401`.
+
 Notes
 
 - Stage 1 authentication is implemented.
-- Stage 2 role definitions are implemented as data model enum values only: `owner`, `reviewer`, and `member`.
-- Role authorization middleware and later feature work are not implemented yet.
+- Stage 2 role definitions are implemented with enum values: `owner`, `reviewer`, and `member`.
+- Stage 3 role authorization middleware is implemented.
+- Later feature work is not implemented yet.
 - The server is ES modules (package.json has "type": "module").
 - server/.env is included here as a placeholder but should not be committed in a real project; .gitignore prevents it from being tracked.
 

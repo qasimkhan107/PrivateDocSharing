@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { USER_ROLE_VALUES } from '../models/User.js';
 
 export function protect(req, res, next) {
   const authorization = req.get('authorization') || '';
@@ -24,4 +25,27 @@ export function protect(req, res, next) {
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired authentication token' });
   }
+}
+
+export function requireRole(allowedRoles) {
+  const normalizedAllowedRoles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+  const hasInvalidConfiguration =
+    normalizedAllowedRoles.length === 0 ||
+    normalizedAllowedRoles.some((role) => typeof role !== 'string' || !USER_ROLE_VALUES.includes(role));
+
+  return function roleAuthorization(req, res, next) {
+    if (hasInvalidConfiguration) {
+      return next(Object.assign(new Error('Invalid role authorization configuration'), { statusCode: 500 }));
+    }
+
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication is required' });
+    }
+
+    if (!normalizedAllowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Insufficient role permissions' });
+    }
+
+    return next();
+  };
 }
