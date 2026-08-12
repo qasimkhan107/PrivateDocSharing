@@ -440,3 +440,135 @@ test('user lookup rejects invalid IDs and reports nonexistent users', async () =
     User.findById = originalFindById;
   }
 });
+
+
+test('document listing lets owners see all organization documents', async () => {
+  const { listDocuments } = await import('../controllers/documentController.js');
+  const Document = (await import('../models/Document.js')).default;
+  const orgId = new mongoose.Types.ObjectId();
+  const originalFind = Document.find;
+  Document.find = (filter) => {
+    assert.deepEqual(filter, { organizationId: orgId.toString() });
+    return { sort: () => Promise.resolve([]) };
+  };
+  try {
+    const res = createMockResponse();
+    await listDocuments({ user: { userId: 'owner-id', role: USER_ROLES.OWNER, organizationId: orgId.toString() } }, res, assert.fail);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body.documents, []);
+  } finally {
+    Document.find = originalFind;
+  }
+});
+
+test('reviewer upload uses authenticated organization and uploadedBy identity', async () => {
+  const { createDocument } = await import('../controllers/documentController.js');
+  const Document = (await import('../models/Document.js')).default;
+  const orgId = new mongoose.Types.ObjectId().toString();
+  const userId = new mongoose.Types.ObjectId().toString();
+  const originalCreate = Document.create;
+  Document.create = async (input) => {
+    assert.equal(input.organizationId, orgId);
+    assert.equal(input.uploadedBy, userId);
+    assert.equal(input.file.originalName, 'nda.pdf');
+    assert.ok(!Object.hasOwn(input, 'clientPath'));
+    return { _id: new mongoose.Types.ObjectId(), ...input, createdAt: new Date(), updatedAt: new Date(), status: 'uploaded' };
+  };
+  try {
+    const req = {
+      user: { userId, role: USER_ROLES.REVIEWER, organizationId: orgId },
+      body: { name: 'NDA', organizationId: new mongoose.Types.ObjectId().toString() },
+      file: { originalname: 'nda.pdf', mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('pdf') },
+    };
+    const res = createMockResponse();
+    await createDocument(req, res, assert.fail);
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.document.organizationId, orgId);
+    assert.equal(res.body.document.uploadedBy, userId);
+  } finally {
+    Document.create = originalCreate;
+  }
+});
+
+test('reviewers list only their own uploaded documents', async () => {
+  const { listDocuments } = await import('../controllers/documentController.js');
+  const Document = (await import('../models/Document.js')).default;
+  const orgId = 'org-a';
+  const userId = 'reviewer-id';
+  const originalFind = Document.find;
+  Document.find = (filter) => {
+    assert.deepEqual(filter, { uploadedBy: userId, organizationId: orgId });
+    return { sort: () => Promise.resolve([]) };
+  };
+  try {
+    const res = createMockResponse();
+    await listDocuments({ user: { userId, role: USER_ROLES.REVIEWER, organizationId: orgId } }, res, assert.fail);
+    assert.equal(res.statusCode, 200);
+  } finally {
+    Document.find = originalFind;
+  }
+});
+
+test('document retrieval denies cross-organization access with 403', async () => {
+  const { getDocumentById } = await import('../controllers/documentController.js');
+  const Document = (await import('../models/Document.js')).default;
+  const documentId = new mongoose.Types.ObjectId();
+  const originalFindById = Document.findById;
+  Document.findById = async () => ({ _id: documentId, organizationId: 'org-b', uploadedBy: 'u1', file: {}, name: 'Doc' });
+  try {
+    const res = createMockResponse();
+    await getDocumentById({ params: { id: documentId.toString() }, user: { userId: 'u1', role: USER_ROLES.OWNER, organizationId: 'org-a' } }, res, assert.fail);
+    assert.equal(res.statusCode, 403);
+  } finally {
+    Document.findById = originalFindById;
+  }
+});
+
+test('member document listing is denied', async () => {
+  const { listDocuments } = await import('../controllers/documentController.js');
+  const res = createMockResponse();
+  await listDocuments({ user: { userId: 'member-id', role: USER_ROLES.MEMBER, organizationId: 'org-id' } }, res, assert.fail);
+  assert.equal(res.statusCode, 403);
+});
+
+test('valid document retrieval returns metadata without filesystem path', async () => {
+  const { getDocumentById } = await import('../controllers/documentController.js');
+  const Document = (await import('../models/Document.js')).default;
+  const orgId = 'org-a';
+  const userId = 'u1';
+  const documentId = new mongoose.Types.ObjectId();
+  const originalFindById = Document.findById;
+  Document.findById = async () => ({
+    _id: documentId,
+    organizationId: orgId,
+    uploadedBy: userId,
+    name: 'Doc',
+    status: 'uploaded',
+    file: { storageKey: 'documents/u1/key.pdf', originalName: 'doc.pdf', mimeType: 'application/pdf', size: 5 },
+  });
+  try {
+    const res = createMockResponse();
+    await getDocumentById({ params: { id: documentId.toString() }, user: { userId, role: USER_ROLES.REVIEWER, organizationId: orgId } }, res, assert.fail);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.document.file.storageKey, 'documents/u1/key.pdf');
+    assert.equal(Object.hasOwn(res.body.document.file, 'path'), false);
+  } finally {
+    Document.findById = originalFindById;
+  }
+});
+
+test('document retrieval rejects invalid IDs', async () => {
+  const { getDocumentById } = await import('../controllers/documentController.js');
+  const res = createMockResponse();
+  await getDocumentById({ params: { id: 'not-valid' }, user: { organizationId: 'org-a' } }, res, assert.fail);
+  assert.equal(res.statusCode, 400);
+});
+
+test('document upload validates file presence, type, and size', async () => {
+  const { createDocument, MAX_DOCUMENT_BYTES } = await import('../controllers/documentController.js');
+  for (const file of [null, { originalname: 'x.exe', mimetype: 'application/x-msdownload', size: 1 }, { originalname: 'huge.pdf', mimetype: 'application/pdf', size: MAX_DOCUMENT_BYTES + 1 }]) {
+    const res = createMockResponse();
+    await createDocument({ user: { userId: 'u1', organizationId: 'org-a' }, body: {}, file }, res, assert.fail);
+    assert.equal(res.statusCode, 400);
+  }
+});

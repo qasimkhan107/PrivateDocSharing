@@ -451,3 +451,65 @@ git add progress.md server/src/app.js server/src/controllers/userController.js s
 git commit -m "feat: add organization user routes"
 git push origin main
 ```
+
+
+Stage 6 — Organization-Scoped Document Routes
+---------------------------------------------
+Status: COMPLETE
+
+Completion summary
+------------------
+Stage 6 document routes have been implemented after confirming Stages 0–5 are marked complete in this progress file. The implementation is limited to secure organization-scoped document upload/list/retrieval and does not add request workflow or Stage 7 functionality.
+
+Files changed
+-------------
+- Added `server/src/models/Document.js`
+- Added `server/src/controllers/documentController.js`
+- Added `server/src/routes/documents.js`
+- Updated `server/src/app.js` to mount document routes under `/api/documents`
+- Updated `server/package.json` to include `multer`
+- Updated `server/src/tests/auth.test.js` with Stage 6 document tests
+- Updated `progress.md`
+
+Implementation summary
+----------------------
+- Added `Document` model with `organizationId`, `name`, safe file metadata/reference, `uploadedBy`, `status`, and timestamps.
+- Added `POST /api/documents` protected by JWT authentication and organization identity. `organizationId` and `uploadedBy` are always derived from `req.user`; client-supplied organization values are ignored.
+- Added upload validation for required file, supported MIME types, and 10 MB max size using memory-backed multer plus controller validation.
+- Added `GET /api/documents` where owners see all documents in their organization, reviewers see only their own uploads, and members receive `403` instead of unrestricted listing.
+- Added `GET /api/documents/:id` with ObjectId validation, same-organization enforcement, cross-org `403`, reviewer own-upload enforcement, and no unrestricted filesystem path exposure.
+- Reused existing `protect` and organization-scoping helpers.
+
+Tests performed
+---------------
+Relevant Stage 6 tests were added to `server/src/tests/auth.test.js` for owner document visibility, reviewer upload, reviewer own-document visibility, cross-org denial, member listing denial, valid retrieval, invalid ID, and upload validation.
+
+In this tool-only environment, shell/git commands cannot be executed by the assistant. Run locally:
+
+```bash
+cd server
+npm install
+npm test
+```
+
+Known issues
+------------
+- Commit, push, and actual test execution cannot be performed from this tool-only workspace.
+
+Commit / push status
+--------------------
+Requested commit message: `feat: implement organization scoped document routes`
+
+Commit hash: not available in this tool-only workspace because git commands cannot be executed here.
+Push result: not available in this tool-only workspace because git push cannot be executed here.
+
+Suggested Stage 6 commands
+--------------------------
+```bash
+git status
+git diff
+cd server && npm install && npm test && cd ..
+git add progress.md server/package.json server/src/app.js server/src/models/Document.js server/src/controllers/documentController.js server/src/routes/documents.js server/src/tests/auth.test.js
+git commit -m "feat: implement organization scoped document routes"
+git push origin main
+```
